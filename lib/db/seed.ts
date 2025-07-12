@@ -1,6 +1,5 @@
 import { stripe } from '../payments/stripe';
-import { db } from './drizzle';
-import { users, teams, teamMembers } from './schema';
+import { supabase } from './supabase';
 import { hashPassword } from '@/lib/auth/session';
 
 async function createStripeProducts() {
@@ -44,31 +43,48 @@ async function seed() {
   const password = 'admin123';
   const passwordHash = await hashPassword(password);
 
-  const [user] = await db
-    .insert(users)
-    .values([
-      {
-        email: email,
-        passwordHash: passwordHash,
-        role: "owner",
-      },
-    ])
-    .returning();
+  // Create user
+  const { data: user, error: userError } = await supabase
+    .from('users')
+    .insert([{
+      email: email,
+      password_hash: passwordHash,
+      role: "owner",
+    }])
+    .select()
+    .single();
+
+  if (userError) {
+    throw new Error(`Failed to create user: ${userError.message}`);
+  }
 
   console.log('Initial user created.');
 
-  const [team] = await db
-    .insert(teams)
-    .values({
+  // Create team
+  const { data: team, error: teamError } = await supabase
+    .from('teams')
+    .insert([{
       name: 'Test Team',
-    })
-    .returning();
+    }])
+    .select()
+    .single();
 
-  await db.insert(teamMembers).values({
-    teamId: team.id,
-    userId: user.id,
-    role: 'owner',
-  });
+  if (teamError) {
+    throw new Error(`Failed to create team: ${teamError.message}`);
+  }
+
+  // Add user to team
+  const { error: memberError } = await supabase
+    .from('team_members')
+    .insert([{
+      team_id: team.id,
+      user_id: user.id,
+      role: 'owner',
+    }]);
+
+  if (memberError) {
+    throw new Error(`Failed to add team member: ${memberError.message}`);
+  }
 
   await createStripeProducts();
 }
@@ -81,4 +97,4 @@ seed()
   .finally(() => {
     console.log('Seed process finished. Exiting...');
     process.exit(0);
-  });
+  }); 

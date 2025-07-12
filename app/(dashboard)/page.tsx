@@ -1,6 +1,5 @@
 import { Button } from '@/components/ui/button';
 import { ArrowRight, CreditCard, Database } from 'lucide-react';
-import { Terminal } from './terminal';
 
 export default function HomePage() {
   return (
@@ -35,7 +34,21 @@ export default function HomePage() {
               </div>
             </div>
             <div className="mt-12 relative sm:max-w-lg sm:mx-auto lg:mt-0 lg:max-w-none lg:mx-0 lg:col-span-6 lg:flex lg:items-center">
-              <Terminal />
+              <div className="w-full rounded-lg shadow-lg overflow-hidden bg-gray-900 text-white font-mono text-sm p-4">
+                <div className="flex space-x-2 mb-4">
+                  <div className="w-3 h-3 rounded-full bg-red-500"></div>
+                  <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
+                  <div className="w-3 h-3 rounded-full bg-green-500"></div>
+                </div>
+                <div className="space-y-2">
+                  <div><span className="text-green-400">$</span> git clone https://github.com/nextjs/saas-starter</div>
+                  <div><span className="text-green-400">$</span> pnpm install</div>
+                  <div><span className="text-green-400">$</span> pnpm db:setup</div>
+                  <div><span className="text-green-400">$</span> pnpm db:migrate</div>
+                  <div><span className="text-green-400">$</span> pnpm db:seed</div>
+                  <div><span className="text-green-400">$</span> pnpm dev 🎉</div>
+                </div>
+              </div>
             </div>
           </div>
         </div>

@@ -1,287 +1,127 @@
 'use client';
 
+import { useState } from 'react';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  CardFooter
-} from '@/components/ui/card';
-import { customerPortalAction } from '@/lib/payments/actions';
-import { useActionState } from 'react';
-import { TeamDataWithMembers, User } from '@/lib/db/schema';
-import { removeTeamMember, inviteTeamMember } from '@/app/(login)/actions';
-import useSWR from 'swr';
-import { Suspense } from 'react';
-import { Input } from '@/components/ui/input';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Label } from '@/components/ui/label';
-import { Loader2, PlusCircle } from 'lucide-react';
+import { BarChart2, Flame, Mail, MessageCircle, Mic, Percent } from 'lucide-react';
+import { StatCard } from '@/components/StatCard';
+import { Chart } from '@/components/Chart';
+import { CampaignTable } from '@/components/CampaignTable';
 
-type ActionState = {
-  error?: string;
-  success?: string;
-};
+const metrics = [
+  { label: 'Total Messages', value: '2,340', icon: Mail },
+  { label: 'Replies', value: '187', icon: MessageCircle },
+  { label: 'Open Rate', value: '42%', icon: Percent },
+  { label: 'Voice Messages', value: '31', icon: Mic },
+];
 
-const fetcher = (url: string) => fetch(url).then((res) => res.json());
-
-function SubscriptionSkeleton() {
+function QuickActions() {
   return (
-    <Card className="mb-8 h-[140px]">
-      <CardHeader>
-        <CardTitle>Team Subscription</CardTitle>
-      </CardHeader>
-    </Card>
+    <div>
+      <h2 className="text-xl font-semibold mb-4">Quick Actions</h2>
+      <div className="flex space-x-2">
+        <Button className="bg-zinc-900 text-white dark:bg-zinc-50 dark:text-zinc-900 hover:bg-zinc-800 dark:hover:bg-zinc-200">
+          New Campaign
+        </Button>
+        <Button variant="outline">Templates</Button>
+      </div>
+    </div>
   );
 }
 
-function ManageSubscription() {
-  const { data: teamData } = useSWR<TeamDataWithMembers>('/api/team', fetcher);
+function TipsAndInsights() {
+  return (
+    <div>
+      <h2 className="text-xl font-semibold mb-4">Tips & Insights</h2>
+      <p className="text-sm text-muted-foreground">
+        Optimize your subject lines for higher open rates. Personalize your
+        messages to increase reply rates. Analyze your top-performing campaigns
+        to replicate success.
+      </p>
+    </div>
+  );
+}
+
+export default function DashboardPage() {
+  const [chartType, setChartType] = useState<'weekly' | 'heatmap'>('weekly');
 
   return (
-    <Card className="mb-8">
-      <CardHeader>
-        <CardTitle>Team Subscription</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-4">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center">
-            <div className="mb-4 sm:mb-0">
-              <p className="font-medium">
-                Current Plan: {teamData?.planName || 'Free'}
-              </p>
-              <p className="text-sm text-muted-foreground">
-                {teamData?.subscriptionStatus === 'active'
-                  ? 'Billed monthly'
-                  : teamData?.subscriptionStatus === 'trialing'
-                  ? 'Trial period'
-                  : 'No active subscription'}
-              </p>
-            </div>
-            <form action={customerPortalAction}>
-              <Button type="submit" variant="outline">
-                Manage Subscription
-              </Button>
-            </form>
+    <div className="p-4 sm:p-6 lg:p-8 space-y-8">
+      <div className="flex flex-col gap-2 mb-2">
+        <h1 className="text-3xl font-extrabold tracking-tight">Dashboard</h1>
+        {/* Gamified XP Bar */}
+        <div className="flex items-center gap-2 mt-1">
+          <span className="text-xs text-accent">XP</span>
+          <div className="flex-1 h-2 rounded-full bg-white/10 overflow-hidden">
+            <div className="h-2 bg-gradient-to-r from-[#E5E4E2] via-[#6C2EBE] to-[#FF8800] rounded-full" style={{ width: '62%' }} />
           </div>
+          <span className="text-xs text-accent ml-2">1,240 / 2,000</span>
+          <Flame className="h-4 w-4 text-orange-500 ml-2" />
         </div>
-      </CardContent>
-    </Card>
-  );
-}
+      </div>
 
-function TeamMembersSkeleton() {
-  return (
-    <Card className="mb-8 h-[140px]">
-      <CardHeader>
-        <CardTitle>Team Members</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="animate-pulse space-y-4 mt-1">
-          <div className="flex items-center space-x-4">
-            <div className="size-8 rounded-full bg-gray-200"></div>
-            <div className="space-y-2">
-              <div className="h-4 w-32 bg-gray-200 rounded"></div>
-              <div className="h-3 w-14 bg-gray-200 rounded"></div>
-            </div>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
+      {/* Metrics Tiles */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {metrics.map((m) => (
+          <Card key={m.label} className="rounded-[12px] p-6 bg-white/5 backdrop-blur-md border border-white/10 shadow-glass flex flex-col items-start">
+            <m.icon className="h-6 w-6 mb-2 text-platinum" />
+            <div className="text-2xl font-bold text-white">{m.value}</div>
+            <div className="text-sm text-accent mt-1">{m.label}</div>
+          </Card>
+        ))}
+      </div>
 
-function TeamMembers() {
-  const { data: teamData } = useSWR<TeamDataWithMembers>('/api/team', fetcher);
-  const [removeState, removeAction, isRemovePending] = useActionState<
-    ActionState,
-    FormData
-  >(removeTeamMember, {});
-
-  const getUserDisplayName = (user: Pick<User, 'id' | 'name' | 'email'>) => {
-    return user.name || user.email || 'Unknown User';
-  };
-
-  if (!teamData?.teamMembers?.length) {
-    return (
-      <Card className="mb-8">
-        <CardHeader>
-          <CardTitle>Team Members</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-muted-foreground">No team members yet.</p>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  return (
-    <Card className="mb-8">
-      <CardHeader>
-        <CardTitle>Team Members</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <ul className="space-y-4">
-          {teamData.teamMembers.map((member, index) => (
-            <li key={member.id} className="flex items-center justify-between">
-              <div className="flex items-center space-x-4">
-                <Avatar>
-                  {/* 
-                    This app doesn't save profile images, but here
-                    is how you'd show them:
-
-                    <AvatarImage
-                      src={member.user.image || ''}
-                      alt={getUserDisplayName(member.user)}
-                    />
-                  */}
-                  <AvatarFallback>
-                    {getUserDisplayName(member.user)
-                      .split(' ')
-                      .map((n) => n[0])
-                      .join('')}
-                  </AvatarFallback>
-                </Avatar>
-                <div>
-                  <p className="font-medium">
-                    {getUserDisplayName(member.user)}
-                  </p>
-                  <p className="text-sm text-muted-foreground capitalize">
-                    {member.role}
-                  </p>
-                </div>
-              </div>
-              {index > 1 ? (
-                <form action={removeAction}>
-                  <input type="hidden" name="memberId" value={member.id} />
-                  <Button
-                    type="submit"
-                    variant="outline"
-                    size="sm"
-                    disabled={isRemovePending}
-                  >
-                    {isRemovePending ? 'Removing...' : 'Remove'}
-                  </Button>
-                </form>
-              ) : null}
-            </li>
-          ))}
-        </ul>
-        {removeState?.error && (
-          <p className="text-red-500 mt-4">{removeState.error}</p>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-function InviteTeamMemberSkeleton() {
-  return (
-    <Card className="h-[260px]">
-      <CardHeader>
-        <CardTitle>Invite Team Member</CardTitle>
-      </CardHeader>
-    </Card>
-  );
-}
-
-function InviteTeamMember() {
-  const { data: user } = useSWR<User>('/api/user', fetcher);
-  const isOwner = user?.role === 'owner';
-  const [inviteState, inviteAction, isInvitePending] = useActionState<
-    ActionState,
-    FormData
-  >(inviteTeamMember, {});
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Invite Team Member</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <form action={inviteAction} className="space-y-4">
-          <div>
-            <Label htmlFor="email" className="mb-2">
-              Email
-            </Label>
-            <Input
-              id="email"
-              name="email"
-              type="email"
-              placeholder="Enter email"
-              required
-              disabled={!isOwner}
-            />
-          </div>
-          <div>
-            <Label>Role</Label>
-            <RadioGroup
-              defaultValue="member"
-              name="role"
-              className="flex space-x-4"
-              disabled={!isOwner}
+      {/* Chart Toggle */}
+      <Card className="rounded-[12px] p-6 bg-white/5 backdrop-blur-md border border-white/10 shadow-glass">
+        <div className="flex items-center justify-between mb-4">
+          <CardTitle className="text-lg font-semibold text-white flex items-center gap-2">
+            <BarChart2 className="h-5 w-5 text-platinum" />
+            {chartType === 'weekly' ? 'Weekly Send/Reply' : 'Engagement Heatmap'}
+          </CardTitle>
+          <div className="flex gap-2">
+            <Button
+              variant={chartType === 'weekly' ? 'default' : 'outline'}
+              className="h-10 rounded-[8px] px-4 font-semibold"
+              onClick={() => setChartType('weekly')}
             >
-              <div className="flex items-center space-x-2 mt-2">
-                <RadioGroupItem value="member" id="member" />
-                <Label htmlFor="member">Member</Label>
-              </div>
-              <div className="flex items-center space-x-2 mt-2">
-                <RadioGroupItem value="owner" id="owner" />
-                <Label htmlFor="owner">Owner</Label>
-              </div>
-            </RadioGroup>
+              Weekly
+            </Button>
+            <Button
+              variant={chartType === 'heatmap' ? 'default' : 'outline'}
+              className="h-10 rounded-[8px] px-4 font-semibold"
+              onClick={() => setChartType('heatmap')}
+            >
+              Heatmap
+            </Button>
           </div>
-          {inviteState?.error && (
-            <p className="text-red-500">{inviteState.error}</p>
-          )}
-          {inviteState?.success && (
-            <p className="text-green-500">{inviteState.success}</p>
-          )}
-          <Button
-            type="submit"
-            className="bg-orange-500 hover:bg-orange-600 text-white"
-            disabled={isInvitePending || !isOwner}
-          >
-            {isInvitePending ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Inviting...
-              </>
-            ) : (
-              <>
-                <PlusCircle className="mr-2 h-4 w-4" />
-                Invite Member
-              </>
-            )}
-          </Button>
-        </form>
-      </CardContent>
-      {!isOwner && (
-        <CardFooter>
-          <p className="text-sm text-muted-foreground">
-            You must be a team owner to invite new members.
-          </p>
-        </CardFooter>
-      )}
-    </Card>
-  );
-}
+        </div>
+        {/* Placeholder for chart */}
+        <div className="h-64 bg-[#222] rounded-[12px] flex items-center justify-center text-accent">
+          {chartType === 'weekly' ? 'Weekly Chart Placeholder' : 'Heatmap Placeholder'}
+        </div>
+      </Card>
 
-export default function SettingsPage() {
-  return (
-    <section className="flex-1 p-4 lg:p-8">
-      <h1 className="text-lg lg:text-2xl font-medium mb-6">Team Settings</h1>
-      <Suspense fallback={<SubscriptionSkeleton />}>
-        <ManageSubscription />
-      </Suspense>
-      <Suspense fallback={<TeamMembersSkeleton />}>
-        <TeamMembers />
-      </Suspense>
-      <Suspense fallback={<InviteTeamMemberSkeleton />}>
-        <InviteTeamMember />
-      </Suspense>
-    </section>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        <StatCard title="Messages Sent This Week" value="170" />
+        <StatCard title="Open Rate" value="25%" />
+        <StatCard title="Reply Rate" value="10%" />
+        <StatCard title="Conversion Rate" value="5%" />
+      </div>
+
+      <Chart />
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="lg:col-span-2">
+          <h2 className="text-xl font-semibold mb-4">
+            Top Performing Campaigns
+          </h2>
+          <CampaignTable />
+        </div>
+        <div className="space-y-8">
+          <QuickActions />
+          <TipsAndInsights />
+        </div>
+      </div>
+    </div>
   );
-}
+} 

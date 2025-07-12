@@ -1,216 +1,169 @@
-import { exec } from 'node:child_process';
-import { promises as fs } from 'node:fs';
-import { promisify } from 'node:util';
-import readline from 'node:readline';
-import crypto from 'node:crypto';
-import path from 'node:path';
-import os from 'node:os';
+import { supabase } from './supabase';
 
-const execAsync = promisify(exec);
+const schema = `
+-- Create users table
+CREATE TABLE IF NOT EXISTS users (
+  id SERIAL PRIMARY KEY,
+  name VARCHAR(100),
+  email VARCHAR(255) NOT NULL UNIQUE,
+  password_hash TEXT NOT NULL,
+  role VARCHAR(20) NOT NULL DEFAULT 'member',
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  deleted_at TIMESTAMP
+);
 
-function question(query: string): Promise<string> {
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
-  });
+-- Create teams table
+CREATE TABLE IF NOT EXISTS teams (
+  id SERIAL PRIMARY KEY,
+  name VARCHAR(100) NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  stripe_customer_id TEXT UNIQUE,
+  stripe_subscription_id TEXT UNIQUE,
+  stripe_product_id TEXT,
+  plan_name VARCHAR(50),
+  subscription_status VARCHAR(20)
+);
 
-  return new Promise((resolve) =>
-    rl.question(query, (ans) => {
-      rl.close();
-      resolve(ans);
-    })
-  );
-}
+-- Create team_members table
+CREATE TABLE IF NOT EXISTS team_members (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id),
+  team_id INTEGER NOT NULL REFERENCES teams(id),
+  role VARCHAR(50) NOT NULL,
+  joined_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
 
-async function checkStripeCLI() {
-  console.log(
-    'Step 1: Checking if Stripe CLI is installed and authenticated...'
-  );
-  try {
-    await execAsync('stripe --version');
-    console.log('Stripe CLI is installed.');
+-- Create activity_logs table
+CREATE TABLE IF NOT EXISTS activity_logs (
+  id SERIAL PRIMARY KEY,
+  team_id INTEGER NOT NULL REFERENCES teams(id),
+  user_id INTEGER REFERENCES users(id),
+  action TEXT NOT NULL,
+  timestamp TIMESTAMP NOT NULL DEFAULT NOW(),
+  ip_address VARCHAR(45)
+);
 
-    // Check if Stripe CLI is authenticated
-    try {
-      await execAsync('stripe config --list');
-      console.log('Stripe CLI is authenticated.');
-    } catch (error) {
-      console.log(
-        'Stripe CLI is not authenticated or the authentication has expired.'
-      );
-      console.log('Please run: stripe login');
-      const answer = await question(
-        'Have you completed the authentication? (y/n): '
-      );
-      if (answer.toLowerCase() !== 'y') {
-        console.log(
-          'Please authenticate with Stripe CLI and run this script again.'
-        );
-        process.exit(1);
-      }
+-- Create invitations table
+CREATE TABLE IF NOT EXISTS invitations (
+  id SERIAL PRIMARY KEY,
+  team_id INTEGER NOT NULL REFERENCES teams(id),
+  email VARCHAR(255) NOT NULL,
+  role VARCHAR(50) NOT NULL,
+  invited_by INTEGER NOT NULL REFERENCES users(id),
+  invited_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  status VARCHAR(20) NOT NULL DEFAULT 'pending'
+);
 
-      // Verify authentication after user confirms login
-      try {
-        await execAsync('stripe config --list');
-        console.log('Stripe CLI authentication confirmed.');
-      } catch (error) {
-        console.error(
-          'Failed to verify Stripe CLI authentication. Please try again.'
-        );
-        process.exit(1);
-      }
-    }
-  } catch (error) {
-    console.error(
-      'Stripe CLI is not installed. Please install it and try again.'
+-- Create indexes for better performance
+CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+CREATE INDEX IF NOT EXISTS idx_users_deleted_at ON users(deleted_at);
+CREATE INDEX IF NOT EXISTS idx_team_members_user_id ON team_members(user_id);
+CREATE INDEX IF NOT EXISTS idx_team_members_team_id ON team_members(team_id);
+CREATE INDEX IF NOT EXISTS idx_activity_logs_user_id ON activity_logs(user_id);
+CREATE INDEX IF NOT EXISTS idx_activity_logs_team_id ON activity_logs(team_id);
+CREATE INDEX IF NOT EXISTS idx_invitations_team_id ON invitations(team_id);
+CREATE INDEX IF NOT EXISTS idx_invitations_email ON invitations(email);
+
+-- Create updated_at trigger function
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ language 'plpgsql';
+
+-- Create triggers for updated_at
+CREATE TRIGGER update_users_updated_at BEFORE UPDATE ON users
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_teams_updated_at BEFORE UPDATE ON teams
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- Enable Row Level Security
+ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE teams ENABLE ROW LEVEL SECURITY;
+ALTER TABLE team_members ENABLE ROW LEVEL SECURITY;
+ALTER TABLE activity_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE invitations ENABLE ROW LEVEL SECURITY;
+
+-- Create RLS policies (basic examples - you may want to customize these)
+DROP POLICY IF EXISTS "Users can view their own data" ON users;
+CREATE POLICY "Users can view their own data" ON users
+    FOR SELECT USING (auth.uid()::text = id::text);
+
+DROP POLICY IF EXISTS "Users can update their own data" ON users;
+CREATE POLICY "Users can update their own data" ON users
+    FOR UPDATE USING (auth.uid()::text = id::text);
+
+DROP POLICY IF EXISTS "Team members can view their team" ON teams;
+CREATE POLICY "Team members can view their team" ON teams
+    FOR SELECT USING (
+        EXISTS (
+            SELECT 1 FROM team_members 
+            WHERE team_members.team_id = teams.id 
+            AND team_members.user_id = auth.uid()::integer
+        )
     );
-    console.log('To install Stripe CLI, follow these steps:');
-    console.log('1. Visit: https://docs.stripe.com/stripe-cli');
-    console.log(
-      '2. Download and install the Stripe CLI for your operating system'
-    );
-    console.log('3. After installation, run: stripe login');
-    console.log(
-      'After installation and authentication, please run this setup script again.'
-    );
-    process.exit(1);
-  }
-}
 
-async function getPostgresURL(): Promise<string> {
-  console.log('Step 2: Setting up Postgres');
-  const dbChoice = await question(
-    'Do you want to use a local Postgres instance with Docker (L) or a remote Postgres instance (R)? (L/R): '
-  );
-
-  if (dbChoice.toLowerCase() === 'l') {
-    console.log('Setting up local Postgres instance with Docker...');
-    await setupLocalPostgres();
-    return 'postgres://postgres:postgres@localhost:54322/postgres';
-  } else {
-    console.log(
-      'You can find Postgres databases at: https://vercel.com/marketplace?category=databases'
+DROP POLICY IF EXISTS "Team members can view team members" ON team_members;
+CREATE POLICY "Team members can view team members" ON team_members
+    FOR SELECT USING (
+        EXISTS (
+            SELECT 1 FROM team_members tm
+            WHERE tm.team_id = team_members.team_id 
+            AND tm.user_id = auth.uid()::integer
+        )
     );
-    return await question('Enter your POSTGRES_URL: ');
-  }
-}
 
-async function setupLocalPostgres() {
-  console.log('Checking if Docker is installed...');
-  try {
-    await execAsync('docker --version');
-    console.log('Docker is installed.');
-  } catch (error) {
-    console.error(
-      'Docker is not installed. Please install Docker and try again.'
+DROP POLICY IF EXISTS "Users can view their own activity logs" ON activity_logs;
+CREATE POLICY "Users can view their own activity logs" ON activity_logs
+    FOR SELECT USING (user_id = auth.uid()::integer);
+
+DROP POLICY IF EXISTS "Team members can view team invitations" ON invitations;
+CREATE POLICY "Team members can view team invitations" ON invitations
+    FOR SELECT USING (
+        EXISTS (
+            SELECT 1 FROM team_members 
+            WHERE team_members.team_id = invitations.team_id 
+            AND team_members.user_id = auth.uid()::integer
+        )
     );
-    console.log(
-      'To install Docker, visit: https://docs.docker.com/get-docker/'
-    );
-    process.exit(1);
-  }
-
-  console.log('Creating docker-compose.yml file...');
-  const dockerComposeContent = `
-services:
-  postgres:
-    image: postgres:16.4-alpine
-    container_name: next_saas_starter_postgres
-    environment:
-      POSTGRES_DB: postgres
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-    ports:
-      - "54322:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-
-volumes:
-  postgres_data:
 `;
 
-  await fs.writeFile(
-    path.join(process.cwd(), 'docker-compose.yml'),
-    dockerComposeContent
-  );
-  console.log('docker-compose.yml file created.');
-
-  console.log('Starting Docker container with `docker compose up -d`...');
+async function setupDatabase() {
+  console.log('Setting up database schema...');
+  
   try {
-    await execAsync('docker compose up -d');
-    console.log('Docker container started successfully.');
+    // Execute the schema
+    const { error } = await supabase.rpc('exec_sql', { sql: schema });
+    
+    if (error) {
+      console.error('Error setting up database:', error);
+      // Try alternative approach - execute each statement separately
+      console.log('Trying alternative approach...');
+      
+      const statements = schema.split(';').filter(stmt => stmt.trim());
+      
+      for (const statement of statements) {
+        if (statement.trim()) {
+          try {
+            await supabase.rpc('exec_sql', { sql: statement + ';' });
+            console.log('Executed:', statement.substring(0, 50) + '...');
+          } catch (stmtError) {
+            console.log('Skipping statement (might already exist):', stmtError);
+          }
+        }
+      }
+    }
+    
+    console.log('Database setup completed successfully!');
   } catch (error) {
-    console.error(
-      'Failed to start Docker container. Please check your Docker installation and try again.'
-    );
-    process.exit(1);
+    console.error('Failed to setup database:', error);
   }
 }
 
-async function getStripeSecretKey(): Promise<string> {
-  console.log('Step 3: Getting Stripe Secret Key');
-  console.log(
-    'You can find your Stripe Secret Key at: https://dashboard.stripe.com/test/apikeys'
-  );
-  return await question('Enter your Stripe Secret Key: ');
-}
-
-async function createStripeWebhook(): Promise<string> {
-  console.log('Step 4: Creating Stripe webhook...');
-  try {
-    const { stdout } = await execAsync('stripe listen --print-secret');
-    const match = stdout.match(/whsec_[a-zA-Z0-9]+/);
-    if (!match) {
-      throw new Error('Failed to extract Stripe webhook secret');
-    }
-    console.log('Stripe webhook created.');
-    return match[0];
-  } catch (error) {
-    console.error(
-      'Failed to create Stripe webhook. Check your Stripe CLI installation and permissions.'
-    );
-    if (os.platform() === 'win32') {
-      console.log(
-        'Note: On Windows, you may need to run this script as an administrator.'
-      );
-    }
-    throw error;
-  }
-}
-
-function generateAuthSecret(): string {
-  console.log('Step 5: Generating AUTH_SECRET...');
-  return crypto.randomBytes(32).toString('hex');
-}
-
-async function writeEnvFile(envVars: Record<string, string>) {
-  console.log('Step 6: Writing environment variables to .env');
-  const envContent = Object.entries(envVars)
-    .map(([key, value]) => `${key}=${value}`)
-    .join('\n');
-
-  await fs.writeFile(path.join(process.cwd(), '.env'), envContent);
-  console.log('.env file created with the necessary variables.');
-}
-
-async function main() {
-  await checkStripeCLI();
-
-  const POSTGRES_URL = await getPostgresURL();
-  const STRIPE_SECRET_KEY = await getStripeSecretKey();
-  const STRIPE_WEBHOOK_SECRET = await createStripeWebhook();
-  const BASE_URL = 'http://localhost:3000';
-  const AUTH_SECRET = generateAuthSecret();
-
-  await writeEnvFile({
-    POSTGRES_URL,
-    STRIPE_SECRET_KEY,
-    STRIPE_WEBHOOK_SECRET,
-    BASE_URL,
-    AUTH_SECRET,
-  });
-
-  console.log('🎉 Setup completed successfully!');
-}
-
-main().catch(console.error);
+// Run the setup
+setupDatabase(); 

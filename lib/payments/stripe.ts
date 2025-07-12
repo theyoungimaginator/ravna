@@ -1,6 +1,7 @@
 import Stripe from 'stripe';
 import { redirect } from 'next/navigation';
-import { Team } from '@/lib/db/schema';
+import { cookies } from 'next/headers';
+import { Team } from '@/lib/db/types';
 import {
   getTeamByStripeCustomerId,
   getUser,
@@ -8,7 +9,7 @@ import {
 } from '@/lib/db/queries';
 
 export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2025-04-30.basil'
+  apiVersion: '2025-05-28.basil'
 });
 
 export async function createCheckoutSession({
@@ -18,36 +19,68 @@ export async function createCheckoutSession({
   team: Team | null;
   priceId: string;
 }) {
-  const user = await getUser();
+  try {
+    // Get the session token from cookies
+    const cookieStore = await cookies();
+    const token = cookieStore.get('sb-access-token')?.value;
+    
+    if (!token) {
+      redirect(`/sign-up?redirect=checkout&priceId=${priceId}`);
+    }
 
-  if (!team || !user) {
+    // Create a Supabase client with the session token
+    const { createClient } = await import('@supabase/supabase-js');
+    const supabaseWithAuth = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        global: {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        },
+      }
+    );
+
+    // Get user from the authenticated client
+    const { data: { user }, error: userError } = await supabaseWithAuth.auth.getUser();
+    
+    if (userError || !user) {
+      redirect(`/sign-up?redirect=checkout&priceId=${priceId}`);
+    }
+
+    if (!team) {
+      redirect(`/sign-up?redirect=checkout&priceId=${priceId}`);
+    }
+
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ['card'],
+      line_items: [
+        {
+          price: priceId,
+          quantity: 1
+        }
+      ],
+      mode: 'subscription',
+      success_url: `${process.env.BASE_URL}/api/stripe/checkout?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${process.env.BASE_URL}/pricing`,
+      customer: team.stripe_customer_id || undefined,
+      client_reference_id: user.id.toString(),
+      allow_promotion_codes: true,
+      subscription_data: {
+        trial_period_days: 14
+      }
+    });
+
+    redirect(session.url!);
+  } catch (error) {
+    console.error('Error in createCheckoutSession:', error);
     redirect(`/sign-up?redirect=checkout&priceId=${priceId}`);
   }
-
-  const session = await stripe.checkout.sessions.create({
-    payment_method_types: ['card'],
-    line_items: [
-      {
-        price: priceId,
-        quantity: 1
-      }
-    ],
-    mode: 'subscription',
-    success_url: `${process.env.BASE_URL}/api/stripe/checkout?session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${process.env.BASE_URL}/pricing`,
-    customer: team.stripeCustomerId || undefined,
-    client_reference_id: user.id.toString(),
-    allow_promotion_codes: true,
-    subscription_data: {
-      trial_period_days: 14
-    }
-  });
-
-  redirect(session.url!);
 }
 
 export async function createCustomerPortalSession(team: Team) {
-  if (!team.stripeCustomerId || !team.stripeProductId) {
+  if (!team.stripe_customer_id || !team.stripe_product_id) {
     redirect('/pricing');
   }
 
@@ -57,7 +90,7 @@ export async function createCustomerPortalSession(team: Team) {
   if (configurations.data.length > 0) {
     configuration = configurations.data[0];
   } else {
-    const product = await stripe.products.retrieve(team.stripeProductId);
+    const product = await stripe.products.retrieve(team.stripe_product_id);
     if (!product.active) {
       throw new Error("Team's product is not active in Stripe");
     }
@@ -108,7 +141,7 @@ export async function createCustomerPortalSession(team: Team) {
   }
 
   return stripe.billingPortal.sessions.create({
-    customer: team.stripeCustomerId,
+    customer: team.stripe_customer_id,
     return_url: `${process.env.BASE_URL}/dashboard`,
     configuration: configuration.id
   });
@@ -131,17 +164,17 @@ export async function handleSubscriptionChange(
   if (status === 'active' || status === 'trialing') {
     const plan = subscription.items.data[0]?.plan;
     await updateTeamSubscription(team.id, {
-      stripeSubscriptionId: subscriptionId,
-      stripeProductId: plan?.product as string,
-      planName: (plan?.product as Stripe.Product).name,
-      subscriptionStatus: status
+      stripe_subscription_id: subscriptionId,
+      stripe_product_id: plan?.product as string,
+      plan_name: (plan?.product as Stripe.Product).name,
+      subscription_status: status
     });
   } else if (status === 'canceled' || status === 'unpaid') {
     await updateTeamSubscription(team.id, {
-      stripeSubscriptionId: null,
-      stripeProductId: null,
-      planName: null,
-      subscriptionStatus: status
+      stripe_subscription_id: null,
+      stripe_product_id: null,
+      plan_name: null,
+      subscription_status: status
     });
   }
 }

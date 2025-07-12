@@ -1,3 +1,4 @@
+import { Suspense } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Settings,
@@ -11,7 +12,7 @@ import {
   CheckCircle,
   type LucideIcon,
 } from 'lucide-react';
-import { ActivityType } from '@/lib/db/schema';
+import { ActivityType } from '@/lib/db/types';
 import { getActivityLogs } from '@/lib/db/queries';
 
 const iconMap: Record<ActivityType, LucideIcon> = {
@@ -68,9 +69,7 @@ function formatAction(action: ActivityType): string {
   }
 }
 
-export default async function ActivityPage() {
-  const logs = await getActivityLogs();
-
+function ActivityPageSkeleton() {
   return (
     <section className="flex-1 p-4 lg:p-8">
       <h1 className="text-lg lg:text-2xl font-medium text-gray-900 mb-6">
@@ -80,47 +79,67 @@ export default async function ActivityPage() {
         <CardHeader>
           <CardTitle>Recent Activity</CardTitle>
         </CardHeader>
-        <CardContent>
-          {logs.length > 0 ? (
-            <ul className="space-y-4">
-              {logs.map((log) => {
-                const Icon = iconMap[log.action as ActivityType] || Settings;
-                const formattedAction = formatAction(
-                  log.action as ActivityType
-                );
-
-                return (
-                  <li key={log.id} className="flex items-center space-x-4">
-                    <div className="bg-orange-100 rounded-full p-2">
-                      <Icon className="w-5 h-5 text-orange-600" />
-                    </div>
-                    <div className="flex-1">
-                      <p className="text-sm font-medium text-gray-900">
-                        {formattedAction}
-                        {log.ipAddress && ` from IP ${log.ipAddress}`}
-                      </p>
-                      <p className="text-xs text-gray-500">
-                        {getRelativeTime(new Date(log.timestamp))}
-                      </p>
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-          ) : (
-            <div className="flex flex-col items-center justify-center text-center py-12">
-              <AlertCircle className="h-12 w-12 text-orange-500 mb-4" />
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                No activity yet
-              </h3>
-              <p className="text-sm text-gray-500 max-w-sm">
-                When you perform actions like signing in or updating your
-                account, they'll appear here.
-              </p>
-            </div>
-          )}
-        </CardContent>
+        <CardContent className="min-h-[88px]" />
       </Card>
     </section>
+  );
+}
+
+export default async function ActivityPage() {
+  const logs = await getActivityLogs();
+
+  return (
+    <Suspense fallback={<ActivityPageSkeleton />}>
+      <section className="flex-1 p-4 lg:p-8">
+        <h1 className="text-lg lg:text-2xl font-medium text-gray-900 mb-6">
+          Activity Log
+        </h1>
+        <Card>
+          <CardHeader>
+            <CardTitle>Recent Activity</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {logs.length > 0 ? (
+              <ul className="space-y-4">
+                {logs.map((log) => {
+                  const Icon = iconMap[log.action as ActivityType] || Settings;
+                  const formattedAction = formatAction(
+                    log.action as ActivityType
+                  );
+
+                  return (
+                    <li key={log.id} className="flex items-center space-x-4">
+                      <div className="bg-orange-100 rounded-full p-2">
+                        <Icon className="w-5 h-5 text-orange-600" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-gray-900">
+                          {formattedAction}
+                          {log.ip_address && ` from IP ${log.ip_address}`}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          {getRelativeTime(new Date(log.timestamp))}
+                        </p>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : (
+              <div className="flex flex-col items-center justify-center text-center py-12">
+                <AlertCircle className="h-12 w-12 text-orange-500 mb-4" />
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                  No activity yet
+                </h3>
+                <p className="text-sm text-gray-500 max-w-sm">
+                  When you perform actions like signing in or updating your
+                  account, they'll appear here.
+                </p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </section>
+    </Suspense>
   );
 }

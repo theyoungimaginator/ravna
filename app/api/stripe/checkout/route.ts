@@ -1,6 +1,4 @@
-import { eq } from 'drizzle-orm';
-import { db } from '@/lib/db/drizzle';
-import { users, teams, teamMembers } from '@/lib/db/schema';
+import { supabase } from '@/lib/db/supabase';
 import { setSession } from '@/lib/auth/session';
 import { NextRequest, NextResponse } from 'next/server';
 import { stripe } from '@/lib/payments/stripe';
@@ -54,44 +52,46 @@ export async function GET(request: NextRequest) {
       throw new Error("No user ID found in session's client_reference_id.");
     }
 
-    const user = await db
-      .select()
-      .from(users)
-      .where(eq(users.id, Number(userId)))
+    const { data: users, error: userError } = await supabase
+      .from('users')
+      .select('*')
+      .eq('id', Number(userId))
       .limit(1);
 
-    if (user.length === 0) {
+    if (userError || !users || users.length === 0) {
       throw new Error('User not found in database.');
     }
 
-    const userTeam = await db
-      .select({
-        teamId: teamMembers.teamId,
-      })
-      .from(teamMembers)
-      .where(eq(teamMembers.userId, user[0].id))
+    const { data: userTeam, error: teamError } = await supabase
+      .from('team_members')
+      .select('team_id')
+      .eq('user_id', users[0].id)
       .limit(1);
 
-    if (userTeam.length === 0) {
+    if (teamError || !userTeam || userTeam.length === 0) {
       throw new Error('User is not associated with any team.');
     }
 
-    await db
-      .update(teams)
-      .set({
-        stripeCustomerId: customerId,
-        stripeSubscriptionId: subscriptionId,
-        stripeProductId: productId,
-        planName: (plan.product as Stripe.Product).name,
-        subscriptionStatus: subscription.status,
-        updatedAt: new Date(),
+    const { error: updateError } = await supabase
+      .from('teams')
+      .update({
+        stripe_customer_id: customerId,
+        stripe_subscription_id: subscriptionId,
+        stripe_product_id: productId,
+        plan_name: (plan.product as Stripe.Product).name,
+        subscription_status: subscription.status,
+        updated_at: new Date().toISOString(),
       })
-      .where(eq(teams.id, userTeam[0].teamId));
+      .eq('id', userTeam[0].team_id);
 
-    await setSession(user[0]);
+    if (updateError) {
+      throw new Error(`Failed to update team subscription: ${updateError.message}`);
+    }
+
+    await setSession(users[0]);
     return NextResponse.redirect(new URL('/dashboard', request.url));
   } catch (error) {
     console.error('Error handling successful checkout:', error);
     return NextResponse.redirect(new URL('/error', request.url));
   }
-}
+} 

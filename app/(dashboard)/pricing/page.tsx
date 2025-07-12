@@ -1,94 +1,153 @@
-import { checkoutAction } from '@/lib/payments/actions';
+import Link from 'next/link';
+import { Button } from '@/components/ui/button';
 import { Check } from 'lucide-react';
-import { getStripePrices, getStripeProducts } from '@/lib/payments/stripe';
-import { SubmitButton } from './submit-button';
 
-// Prices are fresh for one hour max
-export const revalidate = 3600;
+const plans = [
+  {
+    name: 'Starter',
+    price: '$9',
+    description: 'Perfect for small teams getting started',
+    features: [
+      'Up to 5 team members',
+      'Basic analytics',
+      'Email support',
+      '1GB storage',
+      'Basic integrations'
+    ],
+    cta: 'Get Started',
+    popular: false
+  },
+  {
+    name: 'Pro',
+    price: '$29',
+    description: 'Best for growing businesses',
+    features: [
+      'Up to 20 team members',
+      'Advanced analytics',
+      'Priority support',
+      '10GB storage',
+      'Advanced integrations',
+      'Custom branding',
+      'API access'
+    ],
+    cta: 'Start Free Trial',
+    popular: true
+  },
+  {
+    name: 'Enterprise',
+    price: '$99',
+    description: 'For large organizations',
+    features: [
+      'Unlimited team members',
+      'Enterprise analytics',
+      '24/7 phone support',
+      'Unlimited storage',
+      'All integrations',
+      'Custom branding',
+      'API access',
+      'Dedicated account manager',
+      'Custom contracts'
+    ],
+    cta: 'Contact Sales',
+    popular: false
+  }
+];
 
-export default async function PricingPage() {
-  const [prices, products] = await Promise.all([
-    getStripePrices(),
-    getStripeProducts(),
-  ]);
-
-  const basePlan = products.find((product) => product.name === 'Base');
-  const plusPlan = products.find((product) => product.name === 'Plus');
-
-  const basePrice = prices.find((price) => price.productId === basePlan?.id);
-  const plusPrice = prices.find((price) => price.productId === plusPlan?.id);
-
+export default function PricingPage() {
   return (
-    <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-      <div className="grid md:grid-cols-2 gap-8 max-w-xl mx-auto">
-        <PricingCard
-          name={basePlan?.name || 'Base'}
-          price={basePrice?.unitAmount || 800}
-          interval={basePrice?.interval || 'month'}
-          trialDays={basePrice?.trialPeriodDays || 7}
-          features={[
-            'Unlimited Usage',
-            'Unlimited Workspace Members',
-            'Email Support',
-          ]}
-          priceId={basePrice?.id}
-        />
-        <PricingCard
-          name={plusPlan?.name || 'Plus'}
-          price={plusPrice?.unitAmount || 1200}
-          interval={plusPrice?.interval || 'month'}
-          trialDays={plusPrice?.trialPeriodDays || 7}
-          features={[
-            'Everything in Base, and:',
-            'Early Access to New Features',
-            '24/7 Support + Slack Access',
-          ]}
-          priceId={plusPrice?.id}
-        />
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-24">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="text-center">
+          <h1 className="text-4xl font-bold text-black dark:text-white sm:text-5xl">
+            Simple, transparent pricing
+          </h1>
+          <p className="mt-4 text-xl text-gray-600 dark:text-gray-400">
+            Choose the plan that's right for your business
+          </p>
+        </div>
+
+        <div className="mt-16 grid grid-cols-1 gap-8 lg:grid-cols-3">
+          {plans.map((plan) => (
+            <div
+              key={plan.name}
+              className={`relative rounded-lg border p-8 ${
+                plan.popular
+                  ? 'border-black dark:border-white bg-white dark:bg-black shadow-lg'
+                  : 'border-gray-200 dark:border-gray-800 bg-white dark:bg-black'
+              }`}
+            >
+              {plan.popular && (
+                <div className="absolute -top-4 left-1/2 transform -translate-x-1/2">
+                  <span className="bg-black dark:bg-white text-white dark:text-black px-4 py-1 rounded-full text-sm font-medium">
+                    Most Popular
+                  </span>
+                </div>
+              )}
+
+              <div className="text-center">
+                <h3 className="text-2xl font-bold text-black dark:text-white">{plan.name}</h3>
+                <div className="mt-4">
+                  <span className="text-4xl font-bold text-black dark:text-white">{plan.price}</span>
+                  <span className="text-gray-600 dark:text-gray-400">/month</span>
+                </div>
+                <p className="mt-2 text-gray-600 dark:text-gray-400">{plan.description}</p>
+              </div>
+
+              <ul className="mt-8 space-y-4">
+                {plan.features.map((feature) => (
+                  <li key={feature} className="flex items-start">
+                    <Check className="h-5 w-5 text-black dark:text-white mt-0.5 mr-3 flex-shrink-0" />
+                    <span className="text-gray-600 dark:text-gray-400">{feature}</span>
+                  </li>
+                ))}
+              </ul>
+
+              <div className="mt-8">
+                <Button
+                  asChild
+                  className={`w-full ${
+                    plan.popular
+                      ? 'bg-black text-white dark:bg-white dark:text-black hover:bg-gray-800 dark:hover:bg-gray-200'
+                      : 'bg-gray-100 text-black dark:bg-gray-800 dark:text-white hover:bg-gray-200 dark:hover:bg-gray-700'
+                  }`}
+                >
+                  <Link href="/sign-up">{plan.cta}</Link>
+                </Button>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-16 text-center">
+          <h2 className="text-2xl font-bold text-black dark:text-white">Frequently Asked Questions</h2>
+          <div className="mt-8 grid grid-cols-1 gap-8 md:grid-cols-2">
+            <div className="text-left">
+              <h3 className="text-lg font-semibold text-black dark:text-white">Can I change plans anytime?</h3>
+              <p className="mt-2 text-gray-600 dark:text-gray-400">
+                Yes, you can upgrade or downgrade your plan at any time. Changes take effect immediately.
+              </p>
+            </div>
+            <div className="text-left">
+              <h3 className="text-lg font-semibold text-black dark:text-white">Is there a free trial?</h3>
+              <p className="mt-2 text-gray-600 dark:text-gray-400">
+                Yes, we offer a 14-day free trial on all plans. No credit card required to start.
+              </p>
+            </div>
+            <div className="text-left">
+              <h3 className="text-lg font-semibold text-black dark:text-white">What payment methods do you accept?</h3>
+              <p className="mt-2 text-gray-600 dark:text-gray-400">
+                We accept all major credit cards, PayPal, and bank transfers for annual plans.
+              </p>
+            </div>
+            <div className="text-left">
+              <h3 className="text-lg font-semibold text-black dark:text-white">Do you offer refunds?</h3>
+              <p className="mt-2 text-gray-600 dark:text-gray-400">
+                Yes, we offer a 30-day money-back guarantee. If you're not satisfied, we'll refund your payment.
+              </p>
+            </div>
+          </div>
+        </div>
       </div>
-    </main>
-  );
-}
-
-function PricingCard({
-  name,
-  price,
-  interval,
-  trialDays,
-  features,
-  priceId,
-}: {
-  name: string;
-  price: number;
-  interval: string;
-  trialDays: number;
-  features: string[];
-  priceId?: string;
-}) {
-  return (
-    <div className="pt-6">
-      <h2 className="text-2xl font-medium text-gray-900 mb-2">{name}</h2>
-      <p className="text-sm text-gray-600 mb-4">
-        with {trialDays} day free trial
-      </p>
-      <p className="text-4xl font-medium text-gray-900 mb-6">
-        ${price / 100}{' '}
-        <span className="text-xl font-normal text-gray-600">
-          per user / {interval}
-        </span>
-      </p>
-      <ul className="space-y-4 mb-8">
-        {features.map((feature, index) => (
-          <li key={index} className="flex items-start">
-            <Check className="h-5 w-5 text-orange-500 mr-2 mt-0.5 flex-shrink-0" />
-            <span className="text-gray-700">{feature}</span>
-          </li>
-        ))}
-      </ul>
-      <form action={checkoutAction}>
-        <input type="hidden" name="priceId" value={priceId} />
-        <SubmitButton />
-      </form>
     </div>
   );
 }
